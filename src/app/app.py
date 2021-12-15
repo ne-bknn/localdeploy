@@ -8,13 +8,16 @@ from uuid import UUID, uuid4
 
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi import status, HTTPException
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 
 from .models import Job, JobStatus
+from ..deployment import redeploy
 
 
 jobs: Dict[UUID, Job] = {}
 app = FastAPI()
+
 
 def get_job(job_id: UUID) -> Optional[Job]:
     try:
@@ -25,41 +28,41 @@ def get_job(job_id: UUID) -> Optional[Job]:
     return res
 
 
-def cpu_bound_func(x: int):
-    time.sleep(random.randrange(5, 15))
-    return x ** 2
-
-
 async def run_in_process(fn, *args):
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(
-        app.state.executor, fn, *args
-    )
+    return await loop.run_in_executor(app.state.executor, fn, *args)
 
 
-async def start_cpu_bound_task(uid: UUID, param: int) -> None:
-    jobs[uid].result = await run_in_process(cpu_bound_func, param)
-    jobs[uid].status = "complete"
-
+async def deploy_wrapper(job: Job) -> None:
+    jobs[job.uid].result = await run_in_process(redeploy, job)
 
 @app.post("/hook")
-async def print_hook(request: Request, status_code=status.HTTP_200_OK):
-    print(await request.json())
+async def webhook(request: Request, status_code=status.HTTP_202_ACCEPTED, background_tasks: BackgroundTasks):
+    data = await request.json()
+    if "workflow_run" not in data.keys():
+        raise RequestValidationError
+
+    workflow_state = data["workflow_run"]
+
+    if (
+        workflow_state["status"] == "completed"
+        and workflow_state["conclustion"] == "success"
+    ):
+        deploy_name = data["respository"]["name"]
+        new_deploy = Job()
+        new_deploy.deploy_name = deploy_name
+        jobs[new_deploy.uid] = new_deploy
+        background_tasks.add_task(deploy_wrapper, new_deploy)
+        return new_deploy
 
 
-@app.post("/new_cpu_bound_task/{param}", status_code=status.HTTP_202_ACCEPTED)
-async def task_handler(param: int, background_tasks: BackgroundTasks):
-    new_task = Job()
-    jobs[new_task.uid] = new_task
-    background_tasks.add_task(start_cpu_bound_task, new_task.uid, param)
-    return new_task
-
-
-@app.get("/status/{uid}")
-async def status_handler(uid: UUID):
+@app.get("/job/{uid}")
+async def get_job(uid: UUID) -> Job:
     return jobs[uid]
 
-
+@app.get("/job/")
+async def list_jobs(uid: UUID) -> List[Job]:
+    return jobs
 
 
 @app.on_event("startup")

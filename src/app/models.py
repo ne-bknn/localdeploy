@@ -13,5 +13,5 @@ class JobStatus(str, Enum):
 
 class Job(BaseModel):
     uid: UUID = Field(default_factory=uuid4)
+    deploy_name: str = ""
     status: JobStatus = JobStatus.received
-    result: Optional[int] = None
