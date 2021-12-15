@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "localdeploy"
+version = "0.1.0"
+description = "Daemon to deploy continiously, locally"
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.70.1"
+libtmux = "^0.10.2"
+aiosqlite3 = "^0.3.0"
+uvicorn = "^0.16.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^6.2.5"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
